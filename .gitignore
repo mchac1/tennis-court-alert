@@ -1,0 +1,16 @@
+# Environment variables (Contains secrets!)
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+
+# some notes file
+old_notes.txt
+
+# Logs
+availability.log
+
+# Local virtual environments (if you use them)
+venv/
+.venv/
