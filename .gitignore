@@ -14,3 +14,9 @@ availability.log
 # Local virtual environments (if you use them)
 venv/
 .venv/
+
+# Pytest cache
+.pytest_cache/
+
+# Pre-commit cache
+.pre-commit-config.yaml.lock  # (sometimes generated)
