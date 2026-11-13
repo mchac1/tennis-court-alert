@@ -11,7 +11,6 @@ from dotenv import load_dotenv
 # ==========================================
 # CONFIGURATION & ENVIRONMENT VARIABLES
 # ==========================================
-# Load variables from the .env file
 load_dotenv()
 
 BASE_DOMAIN = os.getenv("BASE_DOMAIN")
@@ -20,7 +19,6 @@ LANDING_URL = os.getenv("LANDING_URL")
 API_URL = os.getenv("API_URL")
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 
-# Validate that the necessary variables are present
 if not all([BASE_DOMAIN, ORIGIN_URL, LANDING_URL, API_URL]):
     print("❌ Critical Error: Missing required URLs or DOMAIN in .env file.")
     sys.exit(1)
@@ -70,7 +68,6 @@ def get_fresh_tokens():
         captured_token = None
         def intercept_request(request):
             nonlocal captured_token
-            # Dynamically checks against the domain from your .env file
             if BASE_DOMAIN in request.url and "X-CSRF-Token" in request.headers:
                 captured_token = request.headers["X-CSRF-Token"]
 
@@ -123,7 +120,9 @@ def get_fresh_tokens():
         return csrf_token, cookie_str
 
 def check_availability_for_date(target_date, headers):
-    """Fetches availability and returns a formatted string for Discord."""
+    """
+    Fetches availability and returns a tuple: (formatted_string_for_discord, boolean_has_availability)
+    """
     date_str = target_date.strftime("%Y-%m-%d")
     day_name = target_date.strftime("%A")
     
@@ -147,7 +146,7 @@ def check_availability_for_date(target_date, headers):
     
     if response.status_code != 200:
         logger.error(f"❌ Error: Received status code {response.status_code}")
-        return f"**📅 {day_name}, {date_str}**\n❌ *Error connecting to server.*\n\n"
+        return f"**📅 {day_name}, {date_str}**\n❌ *Error connecting to server.*\n\n", False
 
     data = response.json()
     
@@ -157,10 +156,10 @@ def check_availability_for_date(target_date, headers):
         resources = availability_data["resources"]
     except KeyError:
         logger.error("❌ Could not find the expected data in the response.")
-        return f"**📅 {day_name}, {date_str}**\n❌ *Unexpected data format.*\n\n"
+        return f"**📅 {day_name}, {date_str}**\n❌ *Unexpected data format.*\n\n", False
 
     court_results = {}
-    has_any_availability = False
+    has_any_availability_for_day = False
 
     for resource in resources:
         court_name = resource["resource_name"]
@@ -185,11 +184,11 @@ def check_availability_for_date(target_date, headers):
         court_results[court_name] = available_slots_for_court
         
         if available_slots_for_court:
-            has_any_availability = True
+            has_any_availability_for_day = True
 
     discord_msg = f"**📅 {day_name}, {date_str}**\n"
     
-    if not has_any_availability:
+    if not has_any_availability_for_day:
         discord_msg += "• *No courts available*\n\n"
     else:
         for court_name, slots in court_results.items():
@@ -201,7 +200,7 @@ def check_availability_for_date(target_date, headers):
                 discord_msg += "• *No available slots*\n"
         discord_msg += "\n"
             
-    return discord_msg
+    return discord_msg, has_any_availability_for_day
 
 if __name__ == "__main__":
     try:
@@ -215,7 +214,7 @@ if __name__ == "__main__":
         "Accept": "*/*",
         "Accept-Language": "en-US,en;q=0.9",
         "Content-Type": "application/json;charset=utf-8",
-        "Origin": ORIGIN_URL,         # <--- Pulled from .env
+        "Origin": ORIGIN_URL,
         "Referer": LANDING_URL,
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
         "X-CSRF-Token": fresh_csrf_token,
@@ -232,15 +231,26 @@ if __name__ == "__main__":
         today + timedelta(days=3)
     ]
     
+    # Compile the full report for Discord
     full_report = "🎾 **Daily Tennis Court Availability**\n"
     full_report += f"*Checked on {datetime.now().strftime('%Y-%m-%d at %I:%M %p')}*\n\n"
     full_report += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     
+    any_availability_found_in_4_days = False
+    
     for date in dates_to_check:
-        daily_report = check_availability_for_date(date, headers)
+        daily_report, day_has_availability = check_availability_for_date(date, headers)
         full_report += daily_report
         full_report += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         
-    logger.info("Sending report to Discord...")
-    send_discord_message(full_report)
-    logger.info("✅ All checks completed and report sent!")
+        # If any day has availability, flag the whole report to be sent
+        if day_has_availability:
+            any_availability_found_in_4_days = True
+            
+    # Only send the message if at least one court is available somewhere in the 4 days
+    if any_availability_found_in_4_days:
+        logger.info("Sending report to Discord...")
+        send_discord_message(full_report)
+        logger.info("✅ All checks completed and report sent!")
+    else:
+        logger.info("💤 No availability found for any of the next 4 days. Skipping Discord notification.") 

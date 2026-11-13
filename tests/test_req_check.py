@@ -1,7 +1,7 @@
 import pytest
 from datetime import datetime
 from unittest.mock import patch, MagicMock
-import req_check  # Assuming your script is named req_check.py
+import req_check
 
 # A sample API response to mock
 MOCK_API_RESPONSE = {
@@ -22,45 +22,46 @@ MOCK_API_RESPONSE = {
     }
 }
 
-# Mocking the API call using patch
 @pytest.fixture
 def mock_api_response(mocker):
-    # We mock requests.post inside req_check.py
     mock_post = mocker.patch("req_check.requests.post")
-    
-    # Configure the mock to return our fake JSON response
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = MOCK_API_RESPONSE
     mock_post.return_value = mock_response
-    
     return mock_post
 
 def test_check_availability_weekday(mock_api_response):
-    # Test a weekday (e.g., Wednesday)
-    test_date = datetime(2026, 11, 4) # November 4, 2026 is a Wednesday
+    test_date = datetime(2026, 11, 4) # Wednesday
     dummy_headers = {}
     
-    result = req_check.check_availability_for_date(test_date, dummy_headers)
+    # NEW: Unpack the tuple into the message and the boolean flag
+    result_msg, has_availability = req_check.check_availability_for_date(test_date, dummy_headers)
     
-    # Assertions
-    assert "📅 Wednesday, 2026-11-04" in result
-    assert "🏟️ Court 1" in result
-    assert "✅ 6:00 AM" in result     # Should have checkmark
-    assert "⭐ 6:00 PM" in result     # Should have star (weekday >= 5 PM)
-    assert "5:00 PM" not in result    # Should not be listed (status 1 = unavailable)
+    # NEW: Assert the boolean flag is True
+    assert has_availability is True
+    
+    # Assertions on the message string
+    assert "📅 Wednesday, 2026-11-04" in result_msg
+    assert "🏟️ Court 1" in result_msg
+    assert "✅ 6:00 AM" in result_msg
+    assert "⭐ 6:00 PM" in result_msg
+    assert "5:00 PM" not in result_msg
 
 def test_check_availability_weekend(mock_api_response):
-    # Test a weekend (e.g., Saturday)
-    test_date = datetime(2026, 11, 7) # November 7, 2026 is a Saturday
+    test_date = datetime(2026, 11, 7) # Saturday
     dummy_headers = {}
     
-    result = req_check.check_availability_for_date(test_date, dummy_headers)
+    # NEW: Unpack the tuple
+    result_msg, has_availability = req_check.check_availability_for_date(test_date, dummy_headers)
     
-    # Assertions
-    assert "📅 Saturday, 2026-11-07" in result
-    assert "✅ 6:00 PM" in result     # Should have checkmark (weekend)
-    assert "⭐" not in result         # No stars on weekends
+    # NEW: Assert the boolean flag is True
+    assert has_availability is True
+    
+    # Assertions on the message string
+    assert "📅 Saturday, 2026-11-07" in result_msg
+    assert "✅ 6:00 PM" in result_msg
+    assert "⭐" not in result_msg
 
 def test_no_courts_available(mocker):
     # Mock an API response where ALL courts are unavailable
@@ -82,8 +83,13 @@ def test_no_courts_available(mocker):
     mock_post.return_value = mock_response
     
     test_date = datetime(2026, 11, 4)
-    result = req_check.check_availability_for_date(test_date, {})
     
-    # Should economize output and not list the court name
-    assert "• *No courts available*" in result
-    assert "🏟️ Court 1" not in result
+    # NEW: Unpack the tuple
+    result_msg, has_availability = req_check.check_availability_for_date(test_date, {})
+    
+    # NEW: Assert the boolean flag is False
+    assert has_availability is False
+    
+    # Assertions on the message string
+    assert "• *No courts available*" in result_msg
+    assert "🏟️ Court 1" not in result_msg
